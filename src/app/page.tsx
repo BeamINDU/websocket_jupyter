@@ -1,13 +1,12 @@
-// app/page.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 
 // ใช้ dynamic import เพื่อให้โค้ดทำงานเฉพาะฝั่ง client
-const WebSocketJupyterCell = dynamic(
-  () => import("@/components/WebSocketJupyterCell"),
-  { ssr: false, loading: () => <div>กำลังโหลด WebSocket Jupyter Cell...</div> }
+const MultiCellNotebook = dynamic(
+  () => import("@/components/MultiCellNotebook"),
+  { ssr: false, loading: () => <div>กำลังโหลด Jupyter Notebook...</div> }
 );
 
 export default function Home() {
@@ -22,16 +21,8 @@ export default function Home() {
   }
 
   return (
-    <main style={{ padding: "20px", maxWidth: "1200px", margin: "0 auto" }}>
-      <h1
-        style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "20px" }}
-      >
-        WebSocket Jupyter Integration
-      </h1>
-
-      <div>
-        <WebSocketJupyterCell />
-      </div>
+    <main style={{ padding: "20px" }}>
+      <MultiCellNotebook />
     </main>
   );
 }
