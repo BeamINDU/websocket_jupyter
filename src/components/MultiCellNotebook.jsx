@@ -398,14 +398,137 @@ export default function MultiCellNotebook() {
       window.removeEventListener("cellSourceChanged", handleCellSourceChanged);
     };
   }, [cells.length]); // dependency เป็น cells.length เพื่อให้ effect เรียกซ้ำเมื่อจำนวน cells เปลี่ยน
+  // State เพิ่มเติมสำหรับการจัดการการรันทั้งหมด
+  const [isRunningAll, setIsRunningAll] = useState(false);
+  const [runningProgress, setRunningProgress] = useState({
+    current: 0,
+    total: 0,
+  });
+  const shouldCancelRef = useRef(false);
 
-  // ฟังก์ชันสำหรับลบ cell
-  const deleteCellHandler = (index) => {
-    if (cells.length <= 1) return; // ต้องมีอย่างน้อย 1 cell
+  // ฟังก์ชันสำหรับรันโค้ดทุก cell
+  const executeAllCells = async () => {
+    if (!kernelRef.current) {
+      setError("No kernel available. Please wait for connection.");
+      return;
+    }
 
-    const newCells = [...cells];
-    newCells.splice(index, 1);
-    setCells(newCells);
+    // คัดกรองเฉพาะ code cells และสร้างอาร์เรย์ของ indices
+    const codeCellIndices = cells
+      .map((cell, index) => ({ cell, index }))
+      .filter((item) => item.cell.cell_type === "code")
+      .map((item) => item.index);
+
+    // ถ้าไม่มี code cells เลย
+    if (codeCellIndices.length === 0) {
+      setError("No code cells to execute.");
+      return;
+    }
+
+    // ตั้งค่าสถานะการรันและรีเซ็ตการยกเลิก
+    setIsRunningAll(true);
+    shouldCancelRef.current = false;
+    setRunningProgress({ current: 0, total: codeCellIndices.length });
+
+    try {
+      // รันทีละ cell ตามลำดับ
+      for (let i = 0; i < codeCellIndices.length; i++) {
+        // ตรวจสอบว่าควรยกเลิกหรือไม่
+        if (shouldCancelRef.current) {
+          setError("Execution cancelled.");
+          break;
+        }
+
+        const cellIndex = codeCellIndices[i];
+
+        // อัปเดตความคืบหน้า
+        setRunningProgress({ current: i + 1, total: codeCellIndices.length });
+
+        try {
+          // เคลียร์ output เดิมและเปลี่ยนสถานะ
+          updateCellOutput(cellIndex, "");
+          setCellStatus((prev) => ({ ...prev, [cellIndex]: "Executing..." }));
+
+          // รันโค้ดใน cell นี้
+          const future = kernelRef.current.requestExecute({
+            code: cells[cellIndex].source,
+            silent: false,
+            store_history: true,
+            user_expressions: {},
+            allow_stdin: false,
+          });
+
+          let output = "";
+
+          // จัดการกับผลลัพธ์
+          future.onIOPub = (msg) => {
+            // ตรวจสอบอีกครั้งว่าควรยกเลิกหรือไม่
+            if (shouldCancelRef.current) return;
+
+            const msgType = msg.header.msg_type;
+
+            if (msgType === "stream") {
+              output += msg.content.text;
+              updateCellOutput(cellIndex, output);
+            } else if (
+              msgType === "execute_result" ||
+              msgType === "display_data"
+            ) {
+              if (msg.content.data && msg.content.data["text/plain"]) {
+                output += msg.content.data["text/plain"] + "\n";
+                updateCellOutput(cellIndex, output);
+              }
+            } else if (msgType === "error") {
+              const errorText = `${msg.content.ename}: ${
+                msg.content.evalue
+              }\n${msg.content.traceback.join("\n")}`;
+              output += errorText;
+              updateCellOutput(cellIndex, output);
+
+              // ตัวเลือก: ถ้าต้องการหยุดเมื่อเกิดข้อผิดพลาด
+              // shouldCancelRef.current = true;
+            }
+          };
+
+          // รอให้การรัน cell นี้เสร็จสิ้นก่อนไปรัน cell ถัดไป
+          await future.done;
+          setCellStatus((prev) => ({ ...prev, [cellIndex]: "Idle" }));
+        } catch (error) {
+          console.error(`Error executing cell ${cellIndex}:`, error);
+          updateCellOutput(cellIndex, `Error: ${error.message}`);
+          setCellStatus((prev) => ({ ...prev, [cellIndex]: "Error" }));
+
+          // ตัวเลือก: ถ้าต้องการหยุดเมื่อเกิดข้อผิดพลาด
+          // shouldCancelRef.current = true;
+        }
+      }
+    } finally {
+      // คืนค่าสถานะเมื่อเสร็จสิ้นหรือยกเลิก
+      setIsRunningAll(false);
+      setRunningProgress({ current: 0, total: 0 });
+    }
+  };
+
+  // ฟังก์ชันสำหรับหยุดการรัน
+  const stopExecution = () => {
+    shouldCancelRef.current = true;
+    //setError("Stopping execution. Please wait for current cell to complete...");
+
+    // ถ้าต้องการหยุดการทำงานของ kernel ทันที (interrupt kernel)
+    if (kernelRef.current) {
+      try {
+        kernelRef.current
+          .interrupt()
+          .then(() => {
+            console.log("Kernel interrupted successfully");
+          })
+          .catch((err) => {
+            console.error("Error interrupting kernel:", err);
+          });
+      } catch (error) {
+        console.error("Error trying to interrupt kernel:", error);
+      }
+    }
   };
 
   // ฟังก์ชันสำหรับย้าย cell ขึ้น
@@ -419,7 +542,13 @@ export default function MultiCellNotebook() {
     ];
     setCells(newCells);
   };
+  const deleteCellHandler = (index) => {
+    if (cells.length <= 1) return; // Always keep at least one cell
 
+    const newCells = [...cells];
+    newCells.splice(index, 1);
+    setCells(newCells);
+  };
   // ฟังก์ชันสำหรับย้าย cell ลง
   const moveCellDownHandler = (index) => {
     if (index === cells.length - 1) return; // ไม่สามารถย้าย cell สุดท้ายลงได้
@@ -463,7 +592,7 @@ export default function MultiCellNotebook() {
     const newCells = [...cells];
     newCells[index].cell_type =
       newCells[index].cell_type === "code" ? "markdown" : "code";
-    newCells[index].outputs = ""; // เคลียร์ outputs เมื่อเปลี่ยน type
+    newCells[index].outputs = "";
     setCells(newCells);
   };
 
@@ -503,7 +632,7 @@ export default function MultiCellNotebook() {
           paddingBottom: "15px",
         }}
       >
-        <h2 style={{ margin: 0 }}>Interactive Jupyter Notebook</h2>
+        <h2 style={{ margin: 0 }}>Jupyter Notebook</h2>
 
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <div
@@ -518,6 +647,39 @@ export default function MultiCellNotebook() {
           >
             {connectionStatus}
           </div>
+          {/* เพิ่มปุ่ม Run All */}
+          <button
+            onClick={isRunningAll ? stopExecution : executeAllCells}
+            disabled={connectionStatus !== "Connected"}
+            style={{
+              backgroundColor:
+                connectionStatus !== "Connected"
+                  ? "#cccccc"
+                  : isRunningAll
+                  ? "#F44336"
+                  : "#FF5722",
+              color: "white",
+              border: "none",
+              padding: "8px 16px",
+              borderRadius: "4px",
+              cursor:
+                connectionStatus !== "Connected" ? "not-allowed" : "pointer",
+              fontWeight: "bold",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+            }}
+          >
+            {isRunningAll ? (
+              <>
+                <span style={{ fontSize: "16px" }}>⏹</span> Stop
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: "16px" }}>▶</span> Run All
+              </>
+            )}
+          </button>
 
           <button
             onClick={() => addCellHandler("code")}
@@ -565,7 +727,57 @@ export default function MultiCellNotebook() {
           <strong>Error:</strong> {error}
         </div>
       )}
-
+      {runningProgress.total > 0 && (
+        <div
+          style={{
+            marginBottom: "20px",
+            padding: "10px",
+            backgroundColor: "#f5f5f5",
+            borderRadius: "4px",
+            border: "1px solid #e0e0e0",
+          }}
+        >
+          <div
+            style={{
+              marginBottom: "5px",
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>
+              Running cell {runningProgress.current} of {runningProgress.total}
+              ...
+            </span>
+            <span>
+              {Math.round(
+                (runningProgress.current / runningProgress.total) * 100
+              )}
+              %
+            </span>
+          </div>
+          <div
+            style={{
+              height: "8px",
+              width: "100%",
+              backgroundColor: "#e0e0e0",
+              borderRadius: "4px",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${
+                  (runningProgress.current / runningProgress.total) * 100
+                }%`,
+                backgroundColor: "#4CAF50",
+                borderRadius: "4px",
+                transition: "width 0.3s ease",
+              }}
+            />
+          </div>
+        </div>
+      )}
       {/* แสดง cells */}
       <div>
         {cells.map((cell, index) => (
