@@ -1,14 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
+import {
+  KernelManager,
+  SessionManager,
+  ServerConnection,
+} from "@jupyterlab/services";
 
-// สร้าง component สำหรับ cell เดี่ยว
 const JupyterCell = ({
   index,
   cell,
-  kernelId,
-  wsRef,
+  kernelRef,
+  sessionRef,
   cellStatus,
   setCellStatus,
   deleteCellHandler,
@@ -16,50 +19,77 @@ const JupyterCell = ({
   moveCellDownHandler,
   insertCellHandler,
   toggleCellTypeHandler,
-  isCellExecuting,
+  updateCellOutput,
   totalCells,
 }) => {
-  const [output, setOutput] = useState(cell.outputs || "");
+  const textareaRef = useRef(null);
+
+  // ฟังก์ชันปรับความสูงของ textarea
+  const adjustTextareaHeight = (element) => {
+    element.style.height = "auto";
+    element.style.height = element.scrollHeight + "px";
+  };
+
+  // ปรับความสูงเมื่อ source เปลี่ยนแปลง
+  useEffect(() => {
+    if (textareaRef.current) {
+      adjustTextareaHeight(textareaRef.current);
+    }
+  }, [cell.source]);
 
   // รัน cell
-  const executeCell = () => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      setOutput("WebSocket not connected. Please wait or refresh.");
+  const executeCell = async () => {
+    if (!kernelRef.current) {
+      console.log("No kernel available");
       return;
     }
 
-    // เคลียร์ output เดิม
-    setOutput("");
+    // เคลียร์ output และเปลี่ยนสถานะ
+    updateCellOutput(index, "");
     setCellStatus(index, "Executing...");
 
-    const msgId = `execute_${Date.now()}`;
-
-    // สร้าง execute_request message
-    const executeMsg = {
-      header: {
-        msg_id: msgId,
-        username: "user",
-        session: msgId,
-        msg_type: "execute_request",
-        version: "5.0",
-      },
-      content: {
+    try {
+      // รัน code ผ่าน kernel
+      const future = kernelRef.current.requestExecute({
         code: cell.source,
         silent: false,
         store_history: true,
         user_expressions: {},
         allow_stdin: false,
-      },
-      metadata: {},
-      parent_header: {},
-      channel: "shell",
-    };
+      });
 
-    console.log(`Executing cell ${index}:`, cell.source);
-    wsRef.current.send(JSON.stringify(executeMsg));
+      let output = "";
 
-    // บันทึก cell id ที่กำลังรัน
-    isCellExecuting.current = index;
+      // จัดการผลลัพธ์จาก IOPub messages
+      future.onIOPub = (msg) => {
+        const msgType = msg.header.msg_type;
+        console.log("IOPub message:", msgType, msg);
+
+        if (msgType === "stream") {
+          output += msg.content.text;
+          updateCellOutput(index, output);
+        } else if (msgType === "execute_result" || msgType === "display_data") {
+          if (msg.content.data && msg.content.data["text/plain"]) {
+            output += msg.content.data["text/plain"] + "\n";
+            updateCellOutput(index, output);
+          }
+        } else if (msgType === "error") {
+          const errorText = `${msg.content.ename}: ${
+            msg.content.evalue
+          }\n${msg.content.traceback.join("\n")}`;
+          output += errorText;
+          updateCellOutput(index, output);
+        }
+      };
+
+      // รอให้การทำงานเสร็จสิ้น
+      await future.done;
+      setCellStatus(index, "Idle");
+    } catch (error) {
+      console.error("Error executing cell:", error);
+      updateCellOutput(index, `Error: ${error.message}`);
+      setCellStatus(index, "Error");
+    }
   };
 
   return (
@@ -114,11 +144,11 @@ const JupyterCell = ({
             <button
               onClick={executeCell}
               disabled={
-                !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN
+                !kernelRef.current || cellStatus[index] === "Executing..."
               }
               style={{
                 backgroundColor:
-                  !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN
+                  !kernelRef.current || cellStatus[index] === "Executing..."
                     ? "#cccccc"
                     : "#4CAF50",
                 color: "white",
@@ -126,7 +156,7 @@ const JupyterCell = ({
                 padding: "4px 8px",
                 borderRadius: "4px",
                 cursor:
-                  !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN
+                  !kernelRef.current || cellStatus[index] === "Executing..."
                     ? "not-allowed"
                     : "pointer",
                 fontSize: "12px",
@@ -199,21 +229,27 @@ const JupyterCell = ({
 
       <div style={{ marginBottom: "10px" }}>
         <textarea
+          ref={textareaRef}
           value={cell.source}
           onChange={(e) => {
             cell.source = e.target.value;
-            // ส่ง event เพื่อทำให้ React รีเรนเดอร์
+            // ปรับความสูงเมื่อพิมพ์
+            adjustTextareaHeight(e.target);
+            // ส่ง event เพื่อให้ React รีเรนเดอร์
             const event = new Event("cellSourceChanged");
             window.dispatchEvent(event);
           }}
           style={{
             width: "100%",
-            height: cell.cell_type === "code" ? "150px" : "100px",
+            minHeight: "30px",
+            overflow: "hidden",
+            resize: "none",
             fontFamily: "monospace",
             padding: "8px",
             borderRadius: "4px",
             border: "1px solid #ddd",
             backgroundColor: cell.cell_type === "code" ? "#f8faff" : "#fff",
+            lineHeight: "1.5",
           }}
         />
       </div>
@@ -232,22 +268,37 @@ const JupyterCell = ({
             fontFamily: "monospace",
             whiteSpace: "pre-wrap",
             marginTop: "10px",
+            // ซ่อนเมื่อไม่มี output และไม่ได้กำลังรัน
+            display:
+              cell.outputs || cellStatus[index] === "Executing..."
+                ? "block"
+                : "none",
+            // เพิ่ม transition เพื่อให้การแสดง/ซ่อนดูนุ่มนวล
+            transition: "all 0.3s ease",
+            opacity:
+              cellStatus[index] === "Executing..." && !cell.outputs
+                ? "0.7"
+                : "1",
           }}
         >
-          {cell.outputs ? cell.outputs : "No output yet"}
+          {cellStatus[index] === "Executing..." && !cell.outputs
+            ? "Running..."
+            : cell.outputs || ""}
         </div>
       )}
 
-      <div
-        style={{
-          fontSize: "0.8rem",
-          color: "#666",
-          marginTop: "10px",
-          display: cell.cell_type === "code" ? "block" : "none",
-        }}
-      >
-        Status: {cellStatus[index] || "Idle"}
-      </div>
+      {cell.cell_type === "code" && (
+        <div
+          style={{
+            fontSize: "0.8rem",
+            color: "#666",
+            marginTop: "10px",
+            display: cell.cell_type === "code" ? "block" : "none",
+          }}
+        >
+          Status: {cellStatus[index] || "Idle"}
+        </div>
+      )}
     </div>
   );
 };
@@ -261,21 +312,14 @@ export default function MultiCellNotebook() {
       source: 'print("Hello, Jupyter!")',
       outputs: "",
     },
-    {
-      id: "cell-2",
-      cell_type: "markdown",
-      source: "## This is a Markdown cell\nYou can write formatted text here.",
-      outputs: "",
-    },
   ]);
 
-  const [wsStatus, setWsStatus] = useState("Disconnected");
-  const [kernelId, setKernelId] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState("Disconnected");
   const [error, setError] = useState(null);
   const [cellStatus, setCellStatus] = useState({});
 
-  const wsRef = useRef(null);
-  const isCellExecuting = useRef(null);
+  const kernelRef = useRef(null);
+  const sessionRef = useRef(null);
 
   useEffect(() => {
     // ติดตั้ง event listener สำหรับการอัพเดต cells
@@ -285,176 +329,75 @@ export default function MultiCellNotebook() {
 
     window.addEventListener("cellSourceChanged", handleCellSourceChanged);
 
-    // 1. เริ่มด้วยการสร้าง Kernel ผ่าน REST API
-    const startKernel = async () => {
+    // เชื่อมต่อกับ Jupyter kernel
+    const connectToKernel = async () => {
       try {
-        setWsStatus("Starting kernel...");
+        setConnectionStatus("Connecting...");
 
-        // สร้าง kernel ผ่าน REST API
-        const response = await axios.post(
-          "http://localhost:8888/api/kernels",
-          {},
-          {
-            params: {
-              token:
-                "60c1661cc408f978c309d04157af55c9588ff9557c9380e4fb50785750703da6",
-            },
-          }
-        );
+        // สร้าง ServerConnection settings
+        const serverSettings = ServerConnection.makeSettings({
+          baseUrl: "http://localhost:8888",
+          wsUrl: "ws://localhost:8888",
+          token:
+            "60c1661cc408f978c309d04157af55c9588ff9557c9380e4fb50785750703da6",
+        });
 
-        const newKernelId = response.data.id;
-        setKernelId(newKernelId);
-        console.log("Kernel created with ID:", newKernelId);
+        // สร้าง kernel manager
+        const kernelManager = new KernelManager({ serverSettings });
 
-        // 2. เมื่อได้ kernel ID แล้ว เชื่อมต่อผ่าน WebSocket
-        connectWebSocket(newKernelId);
+        // สร้าง session manager
+        const sessionManager = new SessionManager({
+          kernelManager,
+          serverSettings,
+        });
+
+        console.log("Creating session...");
+        // สร้าง session ใหม่
+        const session = await sessionManager.startNew({
+          name: "MultiCellNotebook",
+          path: "notebook.ipynb",
+          type: "notebook",
+          kernel: {
+            name: "python3",
+          },
+        });
+
+        sessionRef.current = session;
+        kernelRef.current = session.kernel;
+
+        console.log("Session created:", session.id);
+        console.log("Kernel ready:", session.kernel.id);
+
+        setConnectionStatus("Connected");
+        setError(null);
+
+        // ตั้งค่าสถานะเริ่มต้นของทุก cell เป็น Idle
+        const initialStatus = {};
+        cells.forEach((_, index) => {
+          initialStatus[index] = "Idle";
+        });
+        setCellStatus(initialStatus);
+
+        // Clean up เมื่อ component unmounts
+        return () => {
+          console.log("Shutting down session...");
+          session
+            .shutdown()
+            .catch((err) => console.error("Error shutting down session:", err));
+        };
       } catch (err) {
-        console.error("Failed to start kernel:", err);
-        setWsStatus("Failed to start kernel");
+        console.error("Failed to connect to kernel:", err);
+        setConnectionStatus("Connection failed");
         setError(err.message || "Unknown error");
       }
     };
 
-    // เชื่อมต่อกับ kernel ผ่าน WebSocket
-    const connectWebSocket = (id) => {
-      try {
-        const wsUrl = `ws://localhost:8888/api/kernels/${id}/channels?token=60c1661cc408f978c309d04157af55c9588ff9557c9380e4fb50785750703da6`;
-        console.log("Connecting to WebSocket at:", wsUrl);
+    connectToKernel();
 
-        setWsStatus(`Connecting to WebSocket...`);
-        const ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          setWsStatus("Connected");
-          wsRef.current = ws;
-          console.log("WebSocket connection established!");
-
-          // ตั้งค่าสถานะเริ่มต้นของทุก cell เป็น Idle
-          const initialStatus = {};
-          cells.forEach((_, index) => {
-            initialStatus[index] = "Idle";
-          });
-          setCellStatus(initialStatus);
-        };
-
-        ws.onclose = () => {
-          console.log("WebSocket connection closed");
-          setWsStatus("Disconnected");
-          wsRef.current = null;
-        };
-
-        ws.onerror = (event) => {
-          console.error("WebSocket error:", event);
-          setWsStatus("WebSocket error");
-          setError("WebSocket connection error");
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(event.data);
-            handleMessage(msg);
-          } catch (e) {
-            console.error("Error parsing message:", e);
-          }
-        };
-      } catch (err) {
-        console.error("WebSocket connection error:", err);
-        setWsStatus("WebSocket connection failed");
-        setError(err.message || "WebSocket error");
-      }
-    };
-
-    startKernel();
-
-    // Cleanup เมื่อ component unmount
     return () => {
       window.removeEventListener("cellSourceChanged", handleCellSourceChanged);
-
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-
-      // ลบ kernel เมื่อไม่ใช้งาน
-      if (kernelId) {
-        axios
-          .delete(`http://localhost:8888/api/kernels/${kernelId}`, {
-            params: {
-              token:
-                "60c1661cc408f978c309d04157af55c9588ff9557c9380e4fb50785750703da6",
-            },
-          })
-          .catch((err) => console.error("Error shutting down kernel:", err));
-      }
     };
   }, [cells.length]); // dependency เป็น cells.length เพื่อให้ effect เรียกซ้ำเมื่อจำนวน cells เปลี่ยน
-
-  // จัดการกับข้อความจาก WebSocket
-  // จัดการกับข้อความจาก WebSocket
-  const handleMessage = (msg) => {
-    if (!msg.header) return;
-
-    const msgType = msg.header.msg_type;
-    console.log("Received message type:", msgType, msg);
-
-    if (isCellExecuting.current !== null) {
-      const cellIndex = isCellExecuting.current;
-
-      if (msgType === "stream") {
-        console.log("Stream output:", msg.content.text);
-
-        // ใช้ functional update สำหรับ setCells
-        setCells((prevCells) => {
-          const newCells = [...prevCells];
-          newCells[cellIndex] = {
-            ...newCells[cellIndex],
-            outputs:
-              (newCells[cellIndex].outputs || "") + (msg.content.text || ""),
-          };
-          return newCells;
-        });
-      } else if (msgType === "execute_result" || msgType === "display_data") {
-        console.log("Display data:", msg.content.data);
-        if (msg.content.data && msg.content.data["text/plain"]) {
-          const newCells = [...cells];
-          newCells[cellIndex].outputs =
-            (newCells[cellIndex].outputs || "") +
-            msg.content.data["text/plain"] +
-            "\n";
-          setCells(newCells);
-        }
-      } else if (msgType === "error") {
-        console.log("Error:", msg.content);
-        const errorText = `${msg.content.ename}: ${
-          msg.content.evalue
-        }\n${msg.content.traceback.join("\n")}`;
-        const newCells = [...cells];
-        newCells[cellIndex].outputs =
-          (newCells[cellIndex].outputs || "") + errorText;
-        setCells(newCells);
-      } else if (msgType === "status") {
-        console.log("Status change:", msg.content.execution_state);
-        if (msg.content.execution_state === "idle") {
-          // การรันเสร็จสิ้น
-          setCellStatus((prev) => ({
-            ...prev,
-            [isCellExecuting.current]: "Idle",
-          }));
-          // อย่ารีเซ็ต isCellExecuting ทันที ให้รอสักครู่เพื่อรับผลลัพธ์ที่อาจมาภายหลัง
-          setTimeout(() => {
-            isCellExecuting.current = null;
-          }, 500);
-        } else if (msg.content.execution_state === "busy") {
-          setCellStatus((prev) => ({
-            ...prev,
-            [isCellExecuting.current]: "Busy",
-          }));
-        }
-      } else if (msgType === "execute_input") {
-        // แสดงข้อมูลการรัน input
-        console.log("Execute input:", msg.content);
-      }
-    }
-  };
 
   // ฟังก์ชันสำหรับลบ cell
   const deleteCellHandler = (index) => {
@@ -532,6 +475,13 @@ export default function MultiCellNotebook() {
     }));
   };
 
+  // ฟังก์ชันสำหรับอัปเดต output ของ cell
+  const updateCellOutput = (index, output) => {
+    const newCells = [...cells];
+    newCells[index].outputs = output;
+    setCells(newCells);
+  };
+
   return (
     <div
       style={{
@@ -561,11 +511,12 @@ export default function MultiCellNotebook() {
               fontSize: "14px",
               padding: "4px 8px",
               borderRadius: "4px",
-              backgroundColor: wsStatus === "Connected" ? "#e8f5e9" : "#ffebee",
-              color: wsStatus === "Connected" ? "#2e7d32" : "#c62828",
+              backgroundColor:
+                connectionStatus === "Connected" ? "#e8f5e9" : "#ffebee",
+              color: connectionStatus === "Connected" ? "#2e7d32" : "#c62828",
             }}
           >
-            {wsStatus}
+            {connectionStatus}
           </div>
 
           <button
@@ -622,8 +573,8 @@ export default function MultiCellNotebook() {
             key={cell.id}
             index={index}
             cell={cell}
-            kernelId={kernelId}
-            wsRef={wsRef}
+            kernelRef={kernelRef}
+            sessionRef={sessionRef}
             cellStatus={cellStatus}
             setCellStatus={setCellStatusHandler}
             deleteCellHandler={deleteCellHandler}
@@ -631,7 +582,7 @@ export default function MultiCellNotebook() {
             moveCellDownHandler={moveCellDownHandler}
             insertCellHandler={insertCellHandler}
             toggleCellTypeHandler={toggleCellTypeHandler}
-            isCellExecuting={isCellExecuting}
+            updateCellOutput={updateCellOutput}
             totalCells={cells.length}
           />
         ))}
