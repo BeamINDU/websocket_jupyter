@@ -19,6 +19,7 @@ const JupyterCell = ({
   moveCellDownHandler,
   insertCellHandler,
   updateCellOutput,
+  updateCellContent,
   totalCells,
   handleDragStart,
   handleDragOver,
@@ -144,7 +145,7 @@ const JupyterCell = ({
     // เคลียร์ output และเปลี่ยนสถานะ
     updateCellOutput(index, "");
     setCellStatus(index, "Executing...");
-
+    console.log(`Executing cell ${index} with content: "${cell.source}"`);
     try {
       // รัน code ผ่าน kernel
       const future = kernelRef.current.requestExecute({
@@ -160,31 +161,36 @@ const JupyterCell = ({
       // จัดการผลลัพธ์จาก IOPub messages
       future.onIOPub = (msg) => {
         const msgType = msg.header.msg_type;
-        console.log("IOPub message:", msgType, msg);
+        console.log(`Cell ${index} received message:`, msgType, msg);
 
         if (msgType === "stream") {
           output += msg.content.text;
+          console.log(`Cell ${index} updating output to: "${output}"`);
           updateCellOutput(index, output);
         } else if (msgType === "execute_result" || msgType === "display_data") {
           if (msg.content.data && msg.content.data["text/plain"]) {
             output += msg.content.data["text/plain"] + "\n";
+            console.log(`Cell ${index} updating output to: "${output}"`);
             updateCellOutput(index, output);
           }
         } else if (msgType === "error") {
           const errorText = `${msg.content.ename}: ${
             msg.content.evalue
           }\n${msg.content.traceback.join("\n")}`;
-          // ใช้ ansiToHtml ในการแปลง ANSI codes ให้กลายเป็น HTML
           output += ansiToHtml(errorText);
+          console.log(`Cell ${index} updating error output`);
           updateCellOutput(index, output);
         }
       };
 
       // รอให้การทำงานเสร็จสิ้น
       await future.done;
+      console.log(
+        `Cell ${index} execution completed, final output: "${output}"`
+      );
       setCellStatus(index, "Idle");
     } catch (error) {
-      console.error("Error executing cell:", error);
+      console.error(`Error executing cell ${index}:`, error);
       updateCellOutput(index, ansiToHtml(`Error: ${error.message}`));
       setCellStatus(index, "Error");
     }
@@ -193,6 +199,7 @@ const JupyterCell = ({
   return (
     <div
       {...cellAttributes}
+      id={`cell-${cell.id}`}
       style={{
         border: "1px solid #fffff",
         borderRadius: "4px",
@@ -200,6 +207,7 @@ const JupyterCell = ({
         marginBottom: "15px",
         backgroundColor: "#fffff",
         opacity: isDragging ? 0.7 : 1,
+        transition: "box-shadow 0.3s ease-in-out",
       }}
     >
       {/* ส่วนหัวของ cell */}
@@ -358,6 +366,8 @@ const JupyterCell = ({
           ref={textareaRef}
           value={cell.source}
           onChange={(e) => {
+            updateCellContent(index, e.target.value);
+            adjustTextareaHeight(e.target);
             cell.source = e.target.value;
             // ปรับความสูงเมื่อพิมพ์
             adjustTextareaHeight(e.target);
@@ -394,10 +404,12 @@ const JupyterCell = ({
             fontFamily: "monospace",
             whiteSpace: "pre-wrap",
             marginTop: "10px",
-            display:
+            // แก้ไขเงื่อนไขการแสดงผล - แสดงผลเสมอแม้ว่า output จะเป็นสตริงว่าง
+            display: "block",
+            visibility:
               cell.outputs || cellStatus[index] === "Executing..."
-                ? "block"
-                : "none",
+                ? "visible"
+                : "hidden",
             transition: "all 0.3s ease",
             opacity:
               cellStatus[index] === "Executing..." && !cell.outputs
@@ -408,7 +420,7 @@ const JupyterCell = ({
             __html:
               cellStatus[index] === "Executing..." && !cell.outputs
                 ? "Running..."
-                : ansiToHtml(cell.outputs) || "",
+                : cell.outputs || "", // ป้องกันกรณี cell.outputs เป็น null หรือ undefined
           }}
         />
       )}
@@ -575,11 +587,17 @@ export default function MultiCellNotebook() {
     // แสดงข้อความยืนยัน
     setError(null); // ล้างข้อความ error ถ้ามี
   };
+  const updateCellContent = (index, content) => {
+    const newCells = [...cells];
+    newCells[index] = {
+      ...newCells[index],
+      source: content,
+    };
+    setCells(newCells);
+  };
   useEffect(() => {
     // ติดตั้ง event listener สำหรับการอัพเดต cells
-    const handleCellSourceChanged = () => {
-      setCells([...cells]);
-    };
+    const handleCellSourceChanged = () => {};
 
     window.addEventListener("cellSourceChanged", handleCellSourceChanged);
 
@@ -679,10 +697,20 @@ export default function MultiCellNotebook() {
       return;
     }
 
+    // รีเซ็ต kernel ก่อนรันทั้งหมด
+    setError("Resetting kernel before execution...");
+    const resetSuccess = await resetKernel();
+
+    if (!resetSuccess) {
+      setError("Failed to reset kernel. Execution aborted.");
+      return;
+    }
+
     // ตั้งค่าสถานะการรันและรีเซ็ตการยกเลิก
     setIsRunningAll(true);
     shouldCancelRef.current = false;
     setRunningProgress({ current: 0, total: codeCellIndices.length });
+    setError(null); // ล้างข้อความ error เก่า
 
     try {
       // รันทีละ cell ตามลำดับ
@@ -702,7 +730,9 @@ export default function MultiCellNotebook() {
           // เคลียร์ output เดิมและเปลี่ยนสถานะ
           updateCellOutput(cellIndex, "");
           setCellStatus((prev) => ({ ...prev, [cellIndex]: "Executing..." }));
-
+          console.log(
+            `[executeAllCells] Executing cell ${cellIndex} with content: "${cells[cellIndex].source}"`
+          );
           // รันโค้ดใน cell นี้
           const future = kernelRef.current.requestExecute({
             code: cells[cellIndex].source,
@@ -713,7 +743,7 @@ export default function MultiCellNotebook() {
           });
 
           let output = "";
-          let hasErrorOccurred = false; // ตัวแปรใหม่เพื่อตรวจจับว่ามี error เกิดขึ้นหรือไม่
+          let hasErrorOccurred = false; // ตัวแปรเพื่อตรวจจับว่ามี error เกิดขึ้นหรือไม่
 
           // จัดการกับผลลัพธ์
           future.onIOPub = (msg) => {
@@ -721,9 +751,17 @@ export default function MultiCellNotebook() {
             if (shouldCancelRef.current) return;
 
             const msgType = msg.header.msg_type;
+            console.log(
+              `[executeAllCells] Cell ${cellIndex} received message:`,
+              msgType,
+              msg
+            );
 
             if (msgType === "stream") {
               output += msg.content.text;
+              console.log(
+                `[executeAllCells] Cell ${cellIndex} stream output: "${msg.content.text}"`
+              );
               updateCellOutput(cellIndex, output);
             } else if (
               msgType === "execute_result" ||
@@ -731,42 +769,122 @@ export default function MultiCellNotebook() {
             ) {
               if (msg.content.data && msg.content.data["text/plain"]) {
                 output += msg.content.data["text/plain"] + "\n";
+                console.log(
+                  `[executeAllCells] Cell ${cellIndex} execute_result output: "${msg.content.data["text/plain"]}"`
+                );
                 updateCellOutput(cellIndex, output);
               }
             } else if (msgType === "error") {
               hasErrorOccurred = true; // ตั้งค่าตัวแปรเมื่อพบ error
+
+              // สร้างข้อความ error ในรูปแบบเดียวกับ executeCell
               const errorText = `${msg.content.ename}: ${
                 msg.content.evalue
               }\n${msg.content.traceback.join("\n")}`;
+              console.log(
+                `[executeAllCells] Cell ${cellIndex} error raw text:`,
+                errorText
+              );
+
               // ใช้ ansiToHtml ในการแปลง ANSI codes ให้กลายเป็น HTML
-              output += ansiToHtml(errorText);
+              const formattedError = ansiToHtml(errorText);
+              console.log(
+                `[executeAllCells] Cell ${cellIndex} error formatted HTML:`,
+                formattedError
+              );
+
+              // อัปเดต output โดยใช้ข้อความ error ที่แปลงแล้ว
+              output = formattedError; // แทนที่ output ด้วยข้อความ error แทนการต่อท้าย
+              console.log(
+                `[executeAllCells] Cell ${cellIndex} setting error output, length:`,
+                output.length
+              );
+
+              // อัปเดต output ของ cell
               updateCellOutput(cellIndex, output);
 
               // หยุดการทำงานทันทีเมื่อเจอ error
               shouldCancelRef.current = true;
-              setError(
-                `Execution stopped at cell ${cellIndex + 1} due to an error.`
+
+              // แสดงข้อความ error ที่ชัดเจน
+              const errorMessage = `Execution stopped at cell ${
+                cellIndex + 1
+              } due to error: ${msg.content.ename}: ${msg.content.evalue}`;
+              setError(errorMessage);
+
+              // แสดง cell ที่เกิด error ให้ชัดเจน โดยการ scroll ไปที่ cell นั้น
+              const cellElement = document.getElementById(
+                `cell-${cells[cellIndex].id}`
               );
+              if (cellElement) {
+                cellElement.scrollIntoView({
+                  behavior: "smooth",
+                  block: "center",
+                });
+
+                // เพิ่ม highlight ให้กับ cell ที่เกิด error
+                cellElement.style.boxShadow = "0 0 10px #ff0000";
+                // ลบ highlight หลังจาก 3 วินาที
+                setTimeout(() => {
+                  cellElement.style.boxShadow = "none";
+                }, 3000);
+              }
             }
           };
 
           // รอให้การรัน cell นี้เสร็จสิ้นก่อนไปรัน cell ถัดไป
-          await future.done;
-          setCellStatus((prev) => ({ ...prev, [cellIndex]: "Idle" }));
+          await new Promise((resolve) => {
+            future.done
+              .then(() => {
+                console.log(
+                  `[executeAllCells] Cell ${cellIndex} execution completed, final output: "${output}"`
+                );
+                setCellStatus((prev) => ({ ...prev, [cellIndex]: "Idle" }));
+                resolve();
+              })
+              .catch((error) => {
+                console.error(
+                  `[executeAllCells] Error in future.done for cell ${cellIndex}:`,
+                  error
+                );
+                setCellStatus((prev) => ({ ...prev, [cellIndex]: "Error" }));
+                resolve(); // ยังคง resolve เพื่อให้ลูปทำงานต่อไป
+              });
+          });
 
           // ตรวจสอบอีกครั้งหลังจาก future.done หากมี error ให้หยุดการทำงาน
           if (hasErrorOccurred) {
+            console.log(
+              `[executeAllCells] Error detected in cell ${cellIndex}, stopping execution`
+            );
             break;
           }
         } catch (error) {
-          console.error(`Error executing cell ${cellIndex}:`, error);
+          console.error(
+            `[executeAllCells] Error executing cell ${cellIndex}:`,
+            error
+          );
           updateCellOutput(cellIndex, ansiToHtml(`Error: ${error.message}`));
           setCellStatus((prev) => ({ ...prev, [cellIndex]: "Error" }));
 
           // หยุดการทำงานทันทีเมื่อเจอข้อผิดพลาด
-          setError(
-            `Execution stopped at cell ${cellIndex + 1} due to an error.`
+          const errorMessage = `Execution stopped at cell ${
+            cellIndex + 1
+          } due to error: ${error.message}`;
+          setError(errorMessage);
+
+          // แสดง cell ที่เกิด error ให้ชัดเจน
+          const cellElement = document.getElementById(
+            `cell-${cells[cellIndex].id}`
           );
+          if (cellElement) {
+            cellElement.scrollIntoView({ behavior: "smooth", block: "center" });
+            cellElement.style.boxShadow = "0 0 10px #ff0000";
+            setTimeout(() => {
+              cellElement.style.boxShadow = "none";
+            }, 3000);
+          }
+
           break; // หยุดการวนลูปทันที
         }
       }
@@ -776,7 +894,43 @@ export default function MultiCellNotebook() {
       setRunningProgress({ current: 0, total: 0 });
     }
   };
+  const resetKernel = async () => {
+    if (!kernelRef.current) {
+      setError("No kernel available. Please wait for connection.");
+      return false;
+    }
 
+    try {
+      setConnectionStatus("Restarting kernel...");
+
+      // ล้าง output ของทุก cell
+      const newCells = [...cells];
+      newCells.forEach((cell) => {
+        cell.outputs = "";
+      });
+      setCells(newCells);
+
+      // รีเซ็ตสถานะของทุก cell
+      const initialStatus = {};
+      cells.forEach((_, index) => {
+        initialStatus[index] = "Idle";
+      });
+      setCellStatus(initialStatus);
+
+      // รีสตาร์ท kernel
+      await kernelRef.current.restart();
+      console.log("Kernel restarted successfully");
+
+      setConnectionStatus("Connected");
+      setError(null);
+      return true;
+    } catch (error) {
+      console.error("Error restarting kernel:", error);
+      setConnectionStatus("Connection error");
+      setError(`Failed to restart kernel: ${error.message}`);
+      return false;
+    }
+  };
   // ฟังก์ชันสำหรับหยุดการรัน
   const stopExecution = () => {
     shouldCancelRef.current = true;
@@ -864,9 +1018,37 @@ export default function MultiCellNotebook() {
 
   // ฟังก์ชันสำหรับอัปเดต output ของ cell
   const updateCellOutput = (index, output) => {
+    console.log(
+      `updateCellOutput called for cell ${index} with output: "${output}"`
+    );
+
+    // สร้าง array ใหม่เพื่อหลีกเลี่ยงการแก้ไขข้อมูลโดยตรง
     const newCells = [...cells];
+
+    // ตรวจสอบว่า index ถูกต้องหรือไม่
+    if (index < 0 || index >= newCells.length) {
+      console.error(
+        `Invalid cell index: ${index}, cells length: ${newCells.length}`
+      );
+      return;
+    }
+
+    // ตรวจสอบว่า cell มีอยู่จริงหรือไม่
+    if (!newCells[index]) {
+      console.error(`Cell at index ${index} is undefined`);
+      return;
+    }
+
+    // อัปเดต output
     newCells[index].outputs = output;
+
+    // เรียกใช้ setCells เพื่ออัปเดต state
     setCells(newCells);
+
+    // ตรวจสอบหลังจากอัปเดต
+    setTimeout(() => {
+      console.log(`Cell ${index} output after update:`, cells[index]?.outputs);
+    }, 0);
   };
 
   return (
@@ -977,6 +1159,7 @@ export default function MultiCellNotebook() {
               moveCellDownHandler={moveCellDownHandler}
               insertCellHandler={insertCellHandler}
               updateCellOutput={updateCellOutput}
+              updateCellContent={updateCellContent}
               totalCells={cells.length}
               handleDragStart={handleDragStart}
               handleDragOver={handleDragOver}
