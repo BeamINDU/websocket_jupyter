@@ -990,7 +990,6 @@ export default function MultiCellNotebook() {
         {dropTargetIndex === cells.length - 1 &&
           dropPosition === "after" &&
           draggedCellIndex !== cells.length - 1 &&
-          /* เพิ่มเงื่อนไขเพื่อป้องกันการแสดงซ้ำซ้อน */
           !cells.some((cell, idx) => renderDropIndicator(idx) !== null) && (
             <div
               style={{
