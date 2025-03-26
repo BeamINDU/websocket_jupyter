@@ -28,7 +28,7 @@ const JupyterCell = ({
   isDragging,
 }) => {
   const cellAttributes = {
-    draggable: true,
+    draggable: false,
     onDragStart: (e) => handleDragStart(e, index),
     onDragOver: (e) => handleDragOver(e, index),
     onDrop: (e) => handleDrop(e, index),
@@ -40,69 +40,72 @@ const JupyterCell = ({
   function ansiToHtml(text) {
     if (typeof text !== "string") return text;
 
-    return (
-      text
-        // สีข้อความ
-        .replace(/\u001b\[0;30m/g, '<span style="color: black">')
-        .replace(/\u001b\[0;31m/g, '<span style="color: red">')
-        .replace(/\u001b\[0;32m/g, '<span style="color: green">')
-        .replace(/\u001b\[0;33m/g, '<span style="color: yellow">')
-        .replace(/\u001b\[0;34m/g, '<span style="color: blue">')
-        .replace(/\u001b\[0;35m/g, '<span style="color: magenta">')
-        .replace(/\u001b\[0;36m/g, '<span style="color: cyan">')
-        .replace(/\u001b\[0;37m/g, '<span style="color: white">')
+    // เพิ่ม console.log เพื่อดูข้อความที่ได้รับ
+    console.log("ansiToHtml input:", text);
 
-        // สีข้อความแบบเข้ม (bright)
-        .replace(
-          /\u001b\[1;30m/g,
-          '<span style="color: black; font-weight: bold">'
-        )
-        .replace(
-          /\u001b\[1;31m/g,
-          '<span style="color: red; font-weight: bold">'
-        )
-        .replace(
-          /\u001b\[1;32m/g,
-          '<span style="color: green; font-weight: bold">'
-        )
-        .replace(
-          /\u001b\[1;33m/g,
-          '<span style="color: yellow; font-weight: bold">'
-        )
-        .replace(
-          /\u001b\[1;34m/g,
-          '<span style="color: blue; font-weight: bold">'
-        )
-        .replace(
-          /\u001b\[1;35m/g,
-          '<span style="color: magenta; font-weight: bold">'
-        )
-        .replace(
-          /\u001b\[1;36m/g,
-          '<span style="color: cyan; font-weight: bold">'
-        )
-        .replace(
-          /\u001b\[1;37m/g,
-          '<span style="color: white; font-weight: bold">'
-        )
+    const converted = text
+      // สีข้อความ
+      .replace(/\u001b\[0;30m/g, '<span style="color: black">')
+      .replace(/\u001b\[0;31m/g, '<span style="color: red">')
+      .replace(/\u001b\[0;32m/g, '<span style="color: green">')
+      .replace(/\u001b\[0;33m/g, '<span style="color: yellow">')
+      .replace(/\u001b\[0;34m/g, '<span style="color: blue">')
+      .replace(/\u001b\[0;35m/g, '<span style="color: magenta">')
+      .replace(/\u001b\[0;36m/g, '<span style="color: cyan">')
+      .replace(/\u001b\[0;37m/g, '<span style="color: white">')
 
-        // สีพื้นหลัง
-        .replace(/\u001b\[40m/g, '<span style="background-color: black">')
-        .replace(/\u001b\[41m/g, '<span style="background-color: red">')
-        .replace(/\u001b\[42m/g, '<span style="background-color: green">')
-        .replace(/\u001b\[43m/g, '<span style="background-color: yellow">')
-        .replace(/\u001b\[44m/g, '<span style="background-color: blue">')
-        .replace(/\u001b\[45m/g, '<span style="background-color: magenta">')
-        .replace(/\u001b\[46m/g, '<span style="background-color: cyan">')
-        .replace(/\u001b\[47m/g, '<span style="background-color: white">')
+      // สีข้อความแบบเข้ม (bright)
+      .replace(
+        /\u001b\[1;30m/g,
+        '<span style="color: black; font-weight: bold">'
+      )
+      .replace(/\u001b\[1;31m/g, '<span style="color: red; font-weight: bold">')
+      .replace(
+        /\u001b\[1;32m/g,
+        '<span style="color: green; font-weight: bold">'
+      )
+      .replace(
+        /\u001b\[1;33m/g,
+        '<span style="color: yellow; font-weight: bold">'
+      )
+      .replace(
+        /\u001b\[1;34m/g,
+        '<span style="color: blue; font-weight: bold">'
+      )
+      .replace(
+        /\u001b\[1;35m/g,
+        '<span style="color: magenta; font-weight: bold">'
+      )
+      .replace(
+        /\u001b\[1;36m/g,
+        '<span style="color: cyan; font-weight: bold">'
+      )
+      .replace(
+        /\u001b\[1;37m/g,
+        '<span style="color: white; font-weight: bold">'
+      )
 
-        // รหัสปิด
-        .replace(/\u001b\[0m/g, "</span>")
+      // สีพื้นหลัง
+      .replace(/\u001b\[40m/g, '<span style="background-color: black">')
+      .replace(/\u001b\[41m/g, '<span style="background-color: red">')
+      .replace(/\u001b\[42m/g, '<span style="background-color: green">')
+      .replace(/\u001b\[43m/g, '<span style="background-color: yellow">')
+      .replace(/\u001b\[44m/g, '<span style="background-color: blue">')
+      .replace(/\u001b\[45m/g, '<span style="background-color: magenta">')
+      .replace(/\u001b\[46m/g, '<span style="background-color: cyan">')
+      .replace(/\u001b\[47m/g, '<span style="background-color: white">')
 
-        // รหัสพิเศษสำหรับ cursor control (ใช้ในเทอร์มินัล)
-        .replace(/\u001b\[\d+m/g, "") // ลบรหัสที่ไม่รู้จักทั้งหมด
-        .replace(/\u001b\[\d+;\d+m/g, "")
-    ); // ลบรหัสรูปแบบ [number;number]m
+      // รหัสปิด
+      .replace(/\u001b\[0m/g, "</span>")
+
+      // รหัสพิเศษสำหรับ cursor control (ใช้ในเทอร์มินัล)
+      .replace(/\u001b\[\d+m/g, "") // ลบรหัสที่ไม่รู้จักทั้งหมด
+      .replace(/\u001b\[\d+;\d+m/g, ""); // ลบรหัสรูปแบบ [number;number]m
+
+    // เพิ่ม console.log เพื่อดูข้อความที่แปลงแล้ว
+    console.log("ansiToHtml output:", converted);
+
+    return converted;
   }
 
   // นอกจากนี้ ควรปรับส่วนตรวจจับ error ให้ครอบคลุมมากขึ้น
@@ -354,11 +357,17 @@ const JupyterCell = ({
             paddingTop: "8px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "center", // จัดให้อยู่ตรงกลางในแนวนอน
-            width: "24px", // กำหนดความกว้างชัดเจน
-            height: "auto", // กำหนดความสูงให้เท่ากับพื้นที่พิมพ์
+            justifyContent: "center",
+            width: "24px",
+            height: "auto",
           }}
           title="Drag to reorder"
+          draggable={true} // เพิ่มคุณสมบัติ draggable ที่นี่
+          onDragStart={(e) => {
+            // ป้องกันการ bubble
+            e.stopPropagation();
+            handleDragStart(e, index);
+          }}
         >
           ⠿
         </div>
@@ -374,6 +383,16 @@ const JupyterCell = ({
             // ส่ง event เพื่อให้ React รีเรนเดอร์
             const event = new Event("cellSourceChanged");
             window.dispatchEvent(event);
+          }}
+          onKeyDown={(e) => {
+            // ตรวจสอบว่ากด Ctrl+Enter หรือไม่
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault(); // ป้องกันการขึ้นบรรทัดใหม่ใน textarea
+              console.log(`Executing cell ${index} via Ctrl+Enter shortcut`);
+              if (cell.cell_type === "code") {
+                executeCell(); // เรียกใช้ฟังก์ชัน executeCell ที่มีอยู่แล้ว
+              }
+            }
           }}
           style={{
             width: "100%",
@@ -396,6 +415,7 @@ const JupyterCell = ({
           style={{
             backgroundColor: hasError(cell.outputs) ? "#ffebee" : "#ffff",
             padding: "10px",
+            paddingLeft: "40px",
             borderRadius: "4px",
             border: hasError(cell.outputs) ? "1px solid #ffcdd2" : "none",
             minHeight: "30px",
@@ -404,27 +424,31 @@ const JupyterCell = ({
             fontFamily: "monospace",
             whiteSpace: "pre-wrap",
             marginTop: "10px",
-            // แก้ไขเงื่อนไขการแสดงผล - แสดงผลเสมอแม้ว่า output จะเป็นสตริงว่าง
+            // แสดงผลเสมอ ไม่ว่าจะมี output หรือไม่
             display: "block",
-            visibility:
-              cell.outputs || cellStatus[index] === "Executing..."
-                ? "visible"
-                : "hidden",
-            transition: "all 0.3s ease",
-            opacity:
-              cellStatus[index] === "Executing..." && !cell.outputs
-                ? "0.7"
-                : "1",
           }}
           dangerouslySetInnerHTML={{
             __html:
-              cellStatus[index] === "Executing..." && !cell.outputs
+              cellStatus[index] === "Error" && cell.outputs
+                ? cell.outputs
+                : cellStatus[index] === "Executing..." &&
+                  (!cell.outputs || cell.outputs.length === 0)
                 ? "Running..."
-                : cell.outputs || "", // ป้องกันกรณี cell.outputs เป็น null หรือ undefined
+                : cell.outputs || "",
           }}
         />
       )}
-
+      {cell.cell_type === "code" && (
+        <div
+          style={{
+            fontSize: "11px",
+            color: "#666",
+            marginTop: "5px",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        ></div>
+      )}
       {/*      {cell.cell_type === "code" && (
         <div
           style={{
@@ -679,6 +703,7 @@ export default function MultiCellNotebook() {
 
   // ฟังก์ชันสำหรับรันโค้ดทุก cell
   // ฟังก์ชันสำหรับรันโค้ดทุก cell ที่ปรับปรุงแล้ว
+  // ฟังก์ชันสำหรับรันโค้ดทุก cell ที่ปรับปรุงแล้ว
   const executeAllCells = async () => {
     if (!kernelRef.current) {
       setError("No kernel available. Please wait for connection.");
@@ -697,22 +722,54 @@ export default function MultiCellNotebook() {
       return;
     }
 
-    // รีเซ็ต kernel ก่อนรันทั้งหมด
-    setError("Resetting kernel before execution...");
-    const resetSuccess = await resetKernel();
-
-    if (!resetSuccess) {
-      setError("Failed to reset kernel. Execution aborted.");
-      return;
-    }
-
     // ตั้งค่าสถานะการรันและรีเซ็ตการยกเลิก
     setIsRunningAll(true);
     shouldCancelRef.current = false;
     setRunningProgress({ current: 0, total: codeCellIndices.length });
-    setError(null); // ล้างข้อความ error เก่า
+
+    // แสดงข้อความว่ากำลังรีสตาร์ท kernel
+    setError("Restarting kernel before execution...");
 
     try {
+      // รีสตาร์ท kernel ก่อนรันทั้งหมด
+      console.log("Restarting kernel before execution...");
+      setConnectionStatus("Restarting kernel...");
+
+      // ล้าง output ของทุก cell
+      const newCells = [...cells];
+      newCells.forEach((cell) => {
+        cell.outputs = "";
+      });
+      setCells(newCells);
+
+      // รีเซ็ตสถานะของทุก cell
+      const initialStatus = {};
+      cells.forEach((_, index) => {
+        initialStatus[index] = "Idle";
+      });
+      setCellStatus(initialStatus);
+
+      try {
+        // รีสตาร์ท kernel
+        await kernelRef.current.restart();
+        console.log("Kernel restarted successfully");
+        setConnectionStatus("Connected");
+        setError(null); // ล้างข้อความ error หลังจากรีสตาร์ทสำเร็จ
+      } catch (error) {
+        console.error("Error restarting kernel:", error);
+        setConnectionStatus("Connection error");
+        setError(`Failed to restart kernel: ${error.message}`);
+        setIsRunningAll(false);
+        return; // ออกจากฟังก์ชันถ้ารีสตาร์ทไม่สำเร็จ
+      }
+
+      // รอสักครู่ให้ kernel เริ่มทำงานหลังจากรีสตาร์ท
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // ตั้งค่า progress bar
+      setRunningProgress({ current: 0, total: codeCellIndices.length });
+      console.log("Starting execution of all cells after kernel restart");
+
       // รันทีละ cell ตามลำดับ
       for (let i = 0; i < codeCellIndices.length; i++) {
         // ตรวจสอบว่าควรยกเลิกหรือไม่
@@ -733,6 +790,7 @@ export default function MultiCellNotebook() {
           console.log(
             `[executeAllCells] Executing cell ${cellIndex} with content: "${cells[cellIndex].source}"`
           );
+
           // รันโค้ดใน cell นี้
           const future = kernelRef.current.requestExecute({
             code: cells[cellIndex].source,
@@ -747,9 +805,6 @@ export default function MultiCellNotebook() {
 
           // จัดการกับผลลัพธ์
           future.onIOPub = (msg) => {
-            // ตรวจสอบอีกครั้งว่าควรยกเลิกหรือไม่
-            if (shouldCancelRef.current) return;
-
             const msgType = msg.header.msg_type;
             console.log(
               `[executeAllCells] Cell ${cellIndex} received message:`,
@@ -775,117 +830,68 @@ export default function MultiCellNotebook() {
                 updateCellOutput(cellIndex, output);
               }
             } else if (msgType === "error") {
-              hasErrorOccurred = true; // ตั้งค่าตัวแปรเมื่อพบ error
+              hasErrorOccurred = true;
 
-              // สร้างข้อความ error ในรูปแบบเดียวกับ executeCell
-              const errorText = `${msg.content.ename}: ${
+              // สร้างข้อความ error แบบง่าย โดยไม่ใช้ ansiToHtml
+              const errorOutput = `<span style="color: red; font-weight: bold">${
+                msg.content.ename
+              }: ${
                 msg.content.evalue
-              }\n${msg.content.traceback.join("\n")}`;
-              console.log(
-                `[executeAllCells] Cell ${cellIndex} error raw text:`,
-                errorText
-              );
+              }</span>\n\n<pre style="color: red">${msg.content.traceback.join(
+                "\n"
+              )}</pre>`;
 
-              // ใช้ ansiToHtml ในการแปลง ANSI codes ให้กลายเป็น HTML
-              const formattedError = ansiToHtml(errorText);
-              console.log(
-                `[executeAllCells] Cell ${cellIndex} error formatted HTML:`,
-                formattedError
-              );
-
-              // อัปเดต output โดยใช้ข้อความ error ที่แปลงแล้ว
-              output = formattedError; // แทนที่ output ด้วยข้อความ error แทนการต่อท้าย
-              console.log(
-                `[executeAllCells] Cell ${cellIndex} setting error output, length:`,
-                output.length
-              );
-
-              // อัปเดต output ของ cell
+              // อัปเดต output และสถานะ
+              output = errorOutput;
               updateCellOutput(cellIndex, output);
+              setCellStatus((prev) => ({ ...prev, [cellIndex]: "Error" }));
 
-              // หยุดการทำงานทันทีเมื่อเจอ error
-              shouldCancelRef.current = true;
-
-              // แสดงข้อความ error ที่ชัดเจน
+              // บันทึกข้อความ error
               const errorMessage = `Execution stopped at cell ${
                 cellIndex + 1
               } due to error: ${msg.content.ename}: ${msg.content.evalue}`;
+              console.log(
+                `[executeAllCells] Setting error message: ${errorMessage}`
+              );
               setError(errorMessage);
 
-              // แสดง cell ที่เกิด error ให้ชัดเจน โดยการ scroll ไปที่ cell นั้น
-              const cellElement = document.getElementById(
-                `cell-${cells[cellIndex].id}`
-              );
-              if (cellElement) {
-                cellElement.scrollIntoView({
-                  behavior: "smooth",
-                  block: "center",
-                });
-
-                // เพิ่ม highlight ให้กับ cell ที่เกิด error
-                cellElement.style.boxShadow = "0 0 10px #ff0000";
-                // ลบ highlight หลังจาก 3 วินาที
-                setTimeout(() => {
-                  cellElement.style.boxShadow = "none";
-                }, 3000);
-              }
+              // หยุดการทำงาน
+              shouldCancelRef.current = true;
             }
           };
 
           // รอให้การรัน cell นี้เสร็จสิ้นก่อนไปรัน cell ถัดไป
-          await new Promise((resolve) => {
-            future.done
-              .then(() => {
-                console.log(
-                  `[executeAllCells] Cell ${cellIndex} execution completed, final output: "${output}"`
-                );
-                setCellStatus((prev) => ({ ...prev, [cellIndex]: "Idle" }));
-                resolve();
-              })
-              .catch((error) => {
-                console.error(
-                  `[executeAllCells] Error in future.done for cell ${cellIndex}:`,
-                  error
-                );
-                setCellStatus((prev) => ({ ...prev, [cellIndex]: "Error" }));
-                resolve(); // ยังคง resolve เพื่อให้ลูปทำงานต่อไป
-              });
-          });
+          await future.done;
 
-          // ตรวจสอบอีกครั้งหลังจาก future.done หากมี error ให้หยุดการทำงาน
+          // ตรวจสอบสถานะหลังจากรันเสร็จ
           if (hasErrorOccurred) {
             console.log(
               `[executeAllCells] Error detected in cell ${cellIndex}, stopping execution`
             );
-            break;
+            break; // ออกจากลูปทันทีถ้ามี error
+          } else {
+            // ถ้าไม่มี error ให้ตั้งค่าสถานะเป็น Idle
+            setCellStatus((prev) => ({ ...prev, [cellIndex]: "Idle" }));
           }
         } catch (error) {
           console.error(
             `[executeAllCells] Error executing cell ${cellIndex}:`,
             error
           );
-          updateCellOutput(cellIndex, ansiToHtml(`Error: ${error.message}`));
+
+          const errorOutput = `<span style="color: red; font-weight: bold">Error: ${error.message}</span>`;
+          updateCellOutput(cellIndex, errorOutput);
           setCellStatus((prev) => ({ ...prev, [cellIndex]: "Error" }));
 
-          // หยุดการทำงานทันทีเมื่อเจอข้อผิดพลาด
-          const errorMessage = `Execution stopped at cell ${
-            cellIndex + 1
-          } due to error: ${error.message}`;
-          setError(errorMessage);
-
-          // แสดง cell ที่เกิด error ให้ชัดเจน
-          const cellElement = document.getElementById(
-            `cell-${cells[cellIndex].id}`
+          // แสดงข้อความ error
+          setError(
+            `Execution stopped at cell ${cellIndex + 1} due to error: ${
+              error.message
+            }`
           );
-          if (cellElement) {
-            cellElement.scrollIntoView({ behavior: "smooth", block: "center" });
-            cellElement.style.boxShadow = "0 0 10px #ff0000";
-            setTimeout(() => {
-              cellElement.style.boxShadow = "none";
-            }, 3000);
-          }
 
-          break; // หยุดการวนลูปทันที
+          // หยุดการทำงานทันทีเมื่อเจอข้อผิดพลาด
+          break;
         }
       }
     } finally {
@@ -894,47 +900,11 @@ export default function MultiCellNotebook() {
       setRunningProgress({ current: 0, total: 0 });
     }
   };
-  const resetKernel = async () => {
-    if (!kernelRef.current) {
-      setError("No kernel available. Please wait for connection.");
-      return false;
-    }
 
-    try {
-      setConnectionStatus("Restarting kernel...");
-
-      // ล้าง output ของทุก cell
-      const newCells = [...cells];
-      newCells.forEach((cell) => {
-        cell.outputs = "";
-      });
-      setCells(newCells);
-
-      // รีเซ็ตสถานะของทุก cell
-      const initialStatus = {};
-      cells.forEach((_, index) => {
-        initialStatus[index] = "Idle";
-      });
-      setCellStatus(initialStatus);
-
-      // รีสตาร์ท kernel
-      await kernelRef.current.restart();
-      console.log("Kernel restarted successfully");
-
-      setConnectionStatus("Connected");
-      setError(null);
-      return true;
-    } catch (error) {
-      console.error("Error restarting kernel:", error);
-      setConnectionStatus("Connection error");
-      setError(`Failed to restart kernel: ${error.message}`);
-      return false;
-    }
-  };
   // ฟังก์ชันสำหรับหยุดการรัน
   const stopExecution = () => {
     shouldCancelRef.current = true;
-    //setError("Stopping execution. Please wait for current cell to complete...");
+    setError("Stopping execution. Please wait for current cell to complete...");
 
     // ถ้าต้องการหยุดการทำงานของ kernel ทันที (interrupt kernel)
     if (kernelRef.current) {
@@ -952,7 +922,6 @@ export default function MultiCellNotebook() {
       }
     }
   };
-
   // ฟังก์ชันสำหรับย้าย cell ขึ้น
   const moveCellUpHandler = (index) => {
     if (index === 0) return; // ไม่สามารถย้าย cell แรกขึ้นได้
@@ -1019,7 +988,19 @@ export default function MultiCellNotebook() {
   // ฟังก์ชันสำหรับอัปเดต output ของ cell
   const updateCellOutput = (index, output) => {
     console.log(
-      `updateCellOutput called for cell ${index} with output: "${output}"`
+      `updateCellOutput called for cell ${index} with output length: ${
+        output ? output.length : 0
+      }`
+    );
+
+    // ถ้า output เป็น undefined หรือ null, ให้กำหนดเป็นสตริงว่าง
+    if (!output) output = "";
+
+    // แสดงเนื้อหา output (อาจจะจำกัดความยาว)
+    console.log(
+      `updateCellOutput content preview: ${output.slice(0, 100)}${
+        output.length > 100 ? "..." : ""
+      }`
     );
 
     // สร้าง array ใหม่เพื่อหลีกเลี่ยงการแก้ไขข้อมูลโดยตรง
@@ -1045,12 +1026,18 @@ export default function MultiCellNotebook() {
     // เรียกใช้ setCells เพื่ออัปเดต state
     setCells(newCells);
 
-    // ตรวจสอบหลังจากอัปเดต
+    // ตรวจสอบหลังจากอัปเดต (ใช้ setTimeout เพื่อให้การอัปเดต state ทำงานก่อน)
     setTimeout(() => {
-      console.log(`Cell ${index} output after update:`, cells[index]?.outputs);
+      console.log(
+        `Cell ${index} output length after update: ${
+          cells[index]?.outputs.length || 0
+        }`
+      );
+      console.log(
+        `Cell ${index} status after update: ${cellStatus[index] || "unknown"}`
+      );
     }, 0);
   };
-
   return (
     <div
       style={{
@@ -1085,20 +1072,34 @@ export default function MultiCellNotebook() {
             {connectionStatus}
           </div>
 
+          {/* แก้ไขปุ่ม Run All */}
           <button
             onClick={isRunningAll ? stopExecution : executeAllCells}
             disabled={connectionStatus !== "Connected"}
+            title="Restart kernel and run all cells"
             style={{
-              backgroundColor: "#337ab7",
+              backgroundColor: isRunningAll ? "#d32f2f" : "#337ab7",
               color: "white",
               border: "none",
               padding: "4px 8px",
               borderRadius: "3px",
-              fontSize: "12px",
-              cursor: "pointer",
+              fontSize: "13px",
+              cursor:
+                connectionStatus !== "Connected" ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
             }}
           >
-            Run All
+            {isRunningAll ? (
+              <>
+                <span style={{ fontSize: "8px" }}>■</span> Stop
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: "8px" }}>▶▶</span>
+              </>
+            )}
           </button>
 
           <button
