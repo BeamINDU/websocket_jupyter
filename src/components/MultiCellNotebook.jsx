@@ -18,10 +18,107 @@ const JupyterCell = ({
   moveCellUpHandler,
   moveCellDownHandler,
   insertCellHandler,
-  toggleCellTypeHandler,
   updateCellOutput,
   totalCells,
+  handleDragStart,
+  handleDragOver,
+  handleDragLeave,
+  handleDrop,
+  isDragging,
 }) => {
+  const cellAttributes = {
+    draggable: true,
+    onDragStart: (e) => handleDragStart(e, index),
+    onDragOver: (e) => handleDragOver(e, index),
+    onDrop: (e) => handleDrop(e, index),
+    onDragLeave: (e) => handleDragLeave(e),
+    style: {
+      cursor: "move",
+    },
+  };
+  function ansiToHtml(text) {
+    if (typeof text !== "string") return text;
+
+    return (
+      text
+        // สีข้อความ
+        .replace(/\u001b\[0;30m/g, '<span style="color: black">')
+        .replace(/\u001b\[0;31m/g, '<span style="color: red">')
+        .replace(/\u001b\[0;32m/g, '<span style="color: green">')
+        .replace(/\u001b\[0;33m/g, '<span style="color: yellow">')
+        .replace(/\u001b\[0;34m/g, '<span style="color: blue">')
+        .replace(/\u001b\[0;35m/g, '<span style="color: magenta">')
+        .replace(/\u001b\[0;36m/g, '<span style="color: cyan">')
+        .replace(/\u001b\[0;37m/g, '<span style="color: white">')
+
+        // สีข้อความแบบเข้ม (bright)
+        .replace(
+          /\u001b\[1;30m/g,
+          '<span style="color: black; font-weight: bold">'
+        )
+        .replace(
+          /\u001b\[1;31m/g,
+          '<span style="color: red; font-weight: bold">'
+        )
+        .replace(
+          /\u001b\[1;32m/g,
+          '<span style="color: green; font-weight: bold">'
+        )
+        .replace(
+          /\u001b\[1;33m/g,
+          '<span style="color: yellow; font-weight: bold">'
+        )
+        .replace(
+          /\u001b\[1;34m/g,
+          '<span style="color: blue; font-weight: bold">'
+        )
+        .replace(
+          /\u001b\[1;35m/g,
+          '<span style="color: magenta; font-weight: bold">'
+        )
+        .replace(
+          /\u001b\[1;36m/g,
+          '<span style="color: cyan; font-weight: bold">'
+        )
+        .replace(
+          /\u001b\[1;37m/g,
+          '<span style="color: white; font-weight: bold">'
+        )
+
+        // สีพื้นหลัง
+        .replace(/\u001b\[40m/g, '<span style="background-color: black">')
+        .replace(/\u001b\[41m/g, '<span style="background-color: red">')
+        .replace(/\u001b\[42m/g, '<span style="background-color: green">')
+        .replace(/\u001b\[43m/g, '<span style="background-color: yellow">')
+        .replace(/\u001b\[44m/g, '<span style="background-color: blue">')
+        .replace(/\u001b\[45m/g, '<span style="background-color: magenta">')
+        .replace(/\u001b\[46m/g, '<span style="background-color: cyan">')
+        .replace(/\u001b\[47m/g, '<span style="background-color: white">')
+
+        // รหัสปิด
+        .replace(/\u001b\[0m/g, "</span>")
+
+        // รหัสพิเศษสำหรับ cursor control (ใช้ในเทอร์มินัล)
+        .replace(/\u001b\[\d+m/g, "") // ลบรหัสที่ไม่รู้จักทั้งหมด
+        .replace(/\u001b\[\d+;\d+m/g, "")
+    ); // ลบรหัสรูปแบบ [number;number]m
+  }
+
+  // นอกจากนี้ ควรปรับส่วนตรวจจับ error ให้ครอบคลุมมากขึ้น
+  const hasError = (output) => {
+    if (!output) return false;
+
+    return (
+      output.includes("Error:") ||
+      output.includes("NameError") ||
+      output.includes("SyntaxError") ||
+      output.includes("TypeError") ||
+      output.includes("ValueError") ||
+      output.includes("ImportError") ||
+      output.includes("IndentationError") ||
+      output.includes("AttributeError")
+    );
+  };
   const textareaRef = useRef(null);
 
   // ฟังก์ชันปรับความสูงของ textarea
@@ -77,7 +174,8 @@ const JupyterCell = ({
           const errorText = `${msg.content.ename}: ${
             msg.content.evalue
           }\n${msg.content.traceback.join("\n")}`;
-          output += errorText;
+          // ใช้ ansiToHtml ในการแปลง ANSI codes ให้กลายเป็น HTML
+          output += ansiToHtml(errorText);
           updateCellOutput(index, output);
         }
       };
@@ -87,21 +185,24 @@ const JupyterCell = ({
       setCellStatus(index, "Idle");
     } catch (error) {
       console.error("Error executing cell:", error);
-      updateCellOutput(index, `Error: ${error.message}`);
+      updateCellOutput(index, ansiToHtml(`Error: ${error.message}`));
       setCellStatus(index, "Error");
     }
   };
 
   return (
     <div
+      {...cellAttributes}
       style={{
-        border: "1px solid #ccc",
+        border: "1px solid #fffff",
         borderRadius: "4px",
         padding: "15px",
         marginBottom: "15px",
-        backgroundColor: "#f9f9f9",
+        backgroundColor: "#fffff",
+        opacity: isDragging ? 0.7 : 1,
       }}
     >
+      {/* ส่วนหัวของ cell */}
       <div
         style={{
           display: "flex",
@@ -227,7 +328,32 @@ const JupyterCell = ({
         </div>
       </div>
 
-      <div style={{ marginBottom: "10px" }}>
+      <div
+        style={{
+          marginBottom: "10px",
+          display: "flex",
+          alignItems: "stretch",
+        }}
+      >
+        <div
+          style={{
+            cursor: "move",
+            marginRight: "8px",
+            fontSize: "32px",
+            color: "#aaa",
+            opacity: 0.7,
+            userSelect: "none",
+            paddingTop: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center", // จัดให้อยู่ตรงกลางในแนวนอน
+            width: "24px", // กำหนดความกว้างชัดเจน
+            height: "auto", // กำหนดความสูงให้เท่ากับพื้นที่พิมพ์
+          }}
+          title="Drag to reorder"
+        >
+          ⠿
+        </div>
         <textarea
           ref={textareaRef}
           value={cell.source}
@@ -258,36 +384,36 @@ const JupyterCell = ({
       {cell.cell_type === "code" && (
         <div
           style={{
-            backgroundColor: "#fff",
-            border: "1px solid #ddd",
+            backgroundColor: hasError(cell.outputs) ? "#ffebee" : "#ffff",
             padding: "10px",
             borderRadius: "4px",
+            border: hasError(cell.outputs) ? "1px solid #ffcdd2" : "none",
             minHeight: "30px",
             maxHeight: "300px",
             overflowY: "auto",
             fontFamily: "monospace",
             whiteSpace: "pre-wrap",
             marginTop: "10px",
-            // ซ่อนเมื่อไม่มี output และไม่ได้กำลังรัน
             display:
               cell.outputs || cellStatus[index] === "Executing..."
                 ? "block"
                 : "none",
-            // เพิ่ม transition เพื่อให้การแสดง/ซ่อนดูนุ่มนวล
             transition: "all 0.3s ease",
             opacity:
               cellStatus[index] === "Executing..." && !cell.outputs
                 ? "0.7"
                 : "1",
           }}
-        >
-          {cellStatus[index] === "Executing..." && !cell.outputs
-            ? "Running..."
-            : cell.outputs || ""}
-        </div>
+          dangerouslySetInnerHTML={{
+            __html:
+              cellStatus[index] === "Executing..." && !cell.outputs
+                ? "Running..."
+                : ansiToHtml(cell.outputs) || "",
+          }}
+        />
       )}
 
-      {cell.cell_type === "code" && (
+      {/*      {cell.cell_type === "code" && (
         <div
           style={{
             fontSize: "0.8rem",
@@ -298,7 +424,7 @@ const JupyterCell = ({
         >
           Status: {cellStatus[index] || "Idle"}
         </div>
-      )}
+      )}  */}
     </div>
   );
 };
@@ -313,14 +439,142 @@ export default function MultiCellNotebook() {
       outputs: "",
     },
   ]);
-
+  const [draggedCellIndex, setDraggedCellIndex] = useState(null);
+  const [dropTargetIndex, setDropTargetIndex] = useState(null);
+  const [dropPosition, setDropPosition] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState("Disconnected");
   const [error, setError] = useState(null);
   const [cellStatus, setCellStatus] = useState({});
 
   const kernelRef = useRef(null);
   const sessionRef = useRef(null);
+  // ฟังก์ชันสำหรับจัดการ drag and drop
+  const handleDragStart = (e, index) => {
+    setDraggedCellIndex(index);
+    setDropTargetIndex(null);
+    setDropPosition(null);
+    // ตั้งข้อมูลที่จะถูกส่งไปกับการลาก
+    e.dataTransfer.setData("text/plain", index);
+    // ปรับแต่งภาพที่แสดงขณะลาก
+    if (e.dataTransfer.setDragImage) {
+      const dragElement = document.createElement("div");
+      dragElement.textContent = `Cell ${index + 1}`;
+      dragElement.style.padding = "5px 10px";
+      dragElement.style.background = "#e3f2fd";
+      dragElement.style.border = "1px solid #2196F3";
+      dragElement.style.borderRadius = "4px";
+      dragElement.style.position = "absolute";
+      dragElement.style.top = "-1000px";
+      document.body.appendChild(dragElement);
 
+      e.dataTransfer.setDragImage(dragElement, 0, 0);
+
+      // ลบหลังจากใช้งาน
+      setTimeout(() => {
+        document.body.removeChild(dragElement);
+      }, 0);
+    }
+  };
+
+  const handleDragOver = (e, overIndex) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+
+    // ถ้าลากและวางที่เดียวกัน ไม่ต้องแสดงตัวบ่งชี้
+    if (draggedCellIndex === overIndex) {
+      setDropTargetIndex(null);
+      setDropPosition(null);
+      return;
+    }
+
+    // คำนวณตำแหน่งของเมาส์เทียบกับองค์ประกอบที่เมาส์อยู่เหนือ
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+
+    // กำหนดตำแหน่งที่จะวาง
+    const newPosition = y < height / 2 ? "before" : "after";
+
+    setDropTargetIndex(overIndex);
+    setDropPosition(newPosition);
+  };
+  const handleDragLeave = () => {
+    // ซ่อนตัวบ่งชี้เมื่อเมาส์ออกจากเซลล์
+    setDropTargetIndex(null);
+    setDropPosition(null);
+  };
+  const renderDropIndicator = (index) => {
+    console.log(
+      `Rendering indicator for index ${index}, dropTargetIndex: ${dropTargetIndex}, dropPosition: ${dropPosition}, draggedCellIndex: ${draggedCellIndex}`
+    );
+
+    if (dropTargetIndex !== index || draggedCellIndex === index) {
+      return null;
+    }
+
+    return (
+      <div
+        style={{
+          height: "4px",
+          backgroundColor: "#2196F3",
+          position: "absolute",
+          left: "0",
+          right: "0",
+          zIndex: 10,
+          // ตำแหน่งของตัวบ่งชี้ ขึ้นอยู่กับว่าจะวางก่อนหรือหลังเซลล์
+          [dropPosition === "before" ? "top" : "bottom"]: "0",
+        }}
+      />
+    );
+  };
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault();
+
+    // ซ่อนตัวบ่งชี้หลังจากวาง
+    setDropTargetIndex(null);
+    setDropPosition(null);
+
+    // ไม่ทำอะไรถ้าลากและวางที่เดียวกัน
+    if (draggedCellIndex === dropIndex) {
+      setDraggedCellIndex(null);
+      return;
+    }
+
+    // ปรับตำแหน่งที่จะวางตามตำแหน่งของเมาส์
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+
+    // คำนวณตำแหน่งที่ควรจะวาง
+    let actualDropIndex = dropIndex;
+
+    // ถ้าวางหลังเซลล์และไม่ใช่เซลล์สุดท้าย ให้เพิ่มตำแหน่งขึ้น 1
+    if (y >= height / 2) {
+      actualDropIndex += 1;
+    }
+
+    // ปรับตำแหน่งหากลากจากตำแหน่งที่น้อยกว่า
+    if (draggedCellIndex < actualDropIndex) {
+      actualDropIndex -= 1;
+    }
+
+    // สร้าง array ใหม่และจัดลำดับใหม่
+    const newCells = [...cells];
+    const draggedCell = newCells[draggedCellIndex];
+
+    // ลบเซลล์ที่ลากออก
+    newCells.splice(draggedCellIndex, 1);
+
+    // แทรกเซลล์ที่ตำแหน่งใหม่
+    newCells.splice(actualDropIndex, 0, draggedCell);
+
+    // อัปเดต state
+    setCells(newCells);
+    setDraggedCellIndex(null);
+
+    // แสดงข้อความยืนยัน
+    setError(null); // ล้างข้อความ error ถ้ามี
+  };
   useEffect(() => {
     // ติดตั้ง event listener สำหรับการอัพเดต cells
     const handleCellSourceChanged = () => {
@@ -336,8 +590,7 @@ export default function MultiCellNotebook() {
 
         // สร้าง ServerConnection settings
         const serverSettings = ServerConnection.makeSettings({
-          baseUrl: "http://localhost:8888",
-          wsUrl: "ws://localhost:8888",
+          baseUrl: "http://54.169.192.189:8888",
           token:
             "60c1661cc408f978c309d04157af55c9588ff9557c9380e4fb50785750703da6",
         });
@@ -407,6 +660,7 @@ export default function MultiCellNotebook() {
   const shouldCancelRef = useRef(false);
 
   // ฟังก์ชันสำหรับรันโค้ดทุก cell
+  // ฟังก์ชันสำหรับรันโค้ดทุก cell ที่ปรับปรุงแล้ว
   const executeAllCells = async () => {
     if (!kernelRef.current) {
       setError("No kernel available. Please wait for connection.");
@@ -459,6 +713,7 @@ export default function MultiCellNotebook() {
           });
 
           let output = "";
+          let hasErrorOccurred = false; // ตัวแปรใหม่เพื่อตรวจจับว่ามี error เกิดขึ้นหรือไม่
 
           // จัดการกับผลลัพธ์
           future.onIOPub = (msg) => {
@@ -479,27 +734,40 @@ export default function MultiCellNotebook() {
                 updateCellOutput(cellIndex, output);
               }
             } else if (msgType === "error") {
+              hasErrorOccurred = true; // ตั้งค่าตัวแปรเมื่อพบ error
               const errorText = `${msg.content.ename}: ${
                 msg.content.evalue
               }\n${msg.content.traceback.join("\n")}`;
-              output += errorText;
+              // ใช้ ansiToHtml ในการแปลง ANSI codes ให้กลายเป็น HTML
+              output += ansiToHtml(errorText);
               updateCellOutput(cellIndex, output);
 
-              // ตัวเลือก: ถ้าต้องการหยุดเมื่อเกิดข้อผิดพลาด
-              // shouldCancelRef.current = true;
+              // หยุดการทำงานทันทีเมื่อเจอ error
+              shouldCancelRef.current = true;
+              setError(
+                `Execution stopped at cell ${cellIndex + 1} due to an error.`
+              );
             }
           };
 
           // รอให้การรัน cell นี้เสร็จสิ้นก่อนไปรัน cell ถัดไป
           await future.done;
           setCellStatus((prev) => ({ ...prev, [cellIndex]: "Idle" }));
+
+          // ตรวจสอบอีกครั้งหลังจาก future.done หากมี error ให้หยุดการทำงาน
+          if (hasErrorOccurred) {
+            break;
+          }
         } catch (error) {
           console.error(`Error executing cell ${cellIndex}:`, error);
-          updateCellOutput(cellIndex, `Error: ${error.message}`);
+          updateCellOutput(cellIndex, ansiToHtml(`Error: ${error.message}`));
           setCellStatus((prev) => ({ ...prev, [cellIndex]: "Error" }));
 
-          // ตัวเลือก: ถ้าต้องการหยุดเมื่อเกิดข้อผิดพลาด
-          // shouldCancelRef.current = true;
+          // หยุดการทำงานทันทีเมื่อเจอข้อผิดพลาด
+          setError(
+            `Execution stopped at cell ${cellIndex + 1} due to an error.`
+          );
+          break; // หยุดการวนลูปทันที
         }
       }
     } finally {
@@ -575,7 +843,6 @@ export default function MultiCellNotebook() {
     setCells(newCells);
   };
 
-  // ฟังก์ชันสำหรับเพิ่ม cell ที่ท้าย
   const addCellHandler = (type = "code") => {
     const newCell = {
       id: `cell-${Date.now()}`,
@@ -585,15 +852,6 @@ export default function MultiCellNotebook() {
     };
 
     setCells([...cells, newCell]);
-  };
-
-  // ฟังก์ชันสำหรับเปลี่ยน cell type
-  const toggleCellTypeHandler = (index) => {
-    const newCells = [...cells];
-    newCells[index].cell_type =
-      newCells[index].cell_type === "code" ? "markdown" : "code";
-    newCells[index].outputs = "";
-    setCells(newCells);
   };
 
   // ฟังก์ชันสำหรับตั้งค่าสถานะของ cell
@@ -614,30 +872,27 @@ export default function MultiCellNotebook() {
   return (
     <div
       style={{
-        padding: "20px",
+        padding: "10px",
         backgroundColor: "#ffffff",
-        borderRadius: "8px",
-        boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-        maxWidth: "1000px",
+        maxWidth: "1200px",
         margin: "0 auto",
       }}
     >
+      {/* ส่วนหัวของ notebook */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "20px",
-          borderBottom: "1px solid #e0e0e0",
-          paddingBottom: "15px",
+          marginBottom: "15px",
         }}
       >
-        <h2 style={{ margin: 0 }}>Jupyter Notebook</h2>
+        <h3 style={{ margin: 0 }}>Jupyter Notebook</h3>
 
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           <div
             style={{
-              fontSize: "14px",
+              fontSize: "12px",
               padding: "4px 8px",
               borderRadius: "4px",
               backgroundColor:
@@ -647,66 +902,36 @@ export default function MultiCellNotebook() {
           >
             {connectionStatus}
           </div>
-          {/* เพิ่มปุ่ม Run All */}
+
           <button
             onClick={isRunningAll ? stopExecution : executeAllCells}
             disabled={connectionStatus !== "Connected"}
             style={{
-              backgroundColor:
-                connectionStatus !== "Connected"
-                  ? "#cccccc"
-                  : isRunningAll
-                  ? "#F44336"
-                  : "#FF5722",
+              backgroundColor: "#337ab7",
               color: "white",
               border: "none",
-              padding: "8px 16px",
-              borderRadius: "4px",
-              cursor:
-                connectionStatus !== "Connected" ? "not-allowed" : "pointer",
-              fontWeight: "bold",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
+              padding: "4px 8px",
+              borderRadius: "3px",
+              fontSize: "12px",
+              cursor: "pointer",
             }}
           >
-            {isRunningAll ? (
-              <>
-                <span style={{ fontSize: "16px" }}>⏹</span> Stop
-              </>
-            ) : (
-              <>
-                <span style={{ fontSize: "16px" }}>▶</span> Run All
-              </>
-            )}
+            Run All
           </button>
 
           <button
             onClick={() => addCellHandler("code")}
             style={{
-              backgroundColor: "#4CAF50",
+              backgroundColor: "#5cb85c",
               color: "white",
               border: "none",
-              padding: "8px 16px",
-              borderRadius: "4px",
+              padding: "4px 8px",
+              borderRadius: "3px",
+              fontSize: "12px",
               cursor: "pointer",
             }}
           >
-            + Code
-          </button>
-
-          <button
-            onClick={() => addCellHandler("markdown")}
-            style={{
-              backgroundColor: "#9C27B0",
-              color: "white",
-              border: "none",
-              padding: "8px 16px",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
-          >
-            + Markdown
+            +
           </button>
         </div>
       </div>
@@ -715,130 +940,66 @@ export default function MultiCellNotebook() {
       {error && (
         <div
           style={{
-            marginBottom: "20px",
+            marginBottom: "15px",
             backgroundColor: "#ffebee",
             border: "1px solid #ffcdd2",
-            borderRadius: "4px",
-            padding: "10px",
-            fontSize: "14px",
+            borderRadius: "3px",
+            padding: "8px",
+            fontSize: "12px",
             color: "#c62828",
           }}
         >
           <strong>Error:</strong> {error}
         </div>
       )}
-      {runningProgress.total > 0 && (
-        <div
-          style={{
-            marginBottom: "20px",
-            padding: "10px",
-            backgroundColor: "#f5f5f5",
-            borderRadius: "4px",
-            border: "1px solid #e0e0e0",
-          }}
-        >
-          <div
-            style={{
-              marginBottom: "5px",
-              display: "flex",
-              justifyContent: "space-between",
-            }}
-          >
-            <span>
-              Running cell {runningProgress.current} of {runningProgress.total}
-              ...
-            </span>
-            <span>
-              {Math.round(
-                (runningProgress.current / runningProgress.total) * 100
-              )}
-              %
-            </span>
-          </div>
-          <div
-            style={{
-              height: "8px",
-              width: "100%",
-              backgroundColor: "#e0e0e0",
-              borderRadius: "4px",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: `${
-                  (runningProgress.current / runningProgress.total) * 100
-                }%`,
-                backgroundColor: "#4CAF50",
-                borderRadius: "4px",
-                transition: "width 0.3s ease",
-              }}
-            />
-          </div>
-        </div>
-      )}
-      {/* แสดง cells */}
-      <div>
-        {cells.map((cell, index) => (
-          <JupyterCell
-            key={cell.id}
-            index={index}
-            cell={cell}
-            kernelRef={kernelRef}
-            sessionRef={sessionRef}
-            cellStatus={cellStatus}
-            setCellStatus={setCellStatusHandler}
-            deleteCellHandler={deleteCellHandler}
-            moveCellUpHandler={moveCellUpHandler}
-            moveCellDownHandler={moveCellDownHandler}
-            insertCellHandler={insertCellHandler}
-            toggleCellTypeHandler={toggleCellTypeHandler}
-            updateCellOutput={updateCellOutput}
-            totalCells={cells.length}
-          />
-        ))}
-      </div>
 
-      {/* ปุ่มเพิ่ม cell ที่ท้าย */}
+      {/* Container สำหรับ cells ทั้งหมด - เป็น div เดียวที่ครอบทุก cells */}
       <div
+        className="jp-Notebook-container"
         style={{
-          display: "flex",
-          gap: "10px",
-          justifyContent: "center",
-          marginTop: "20px",
-          padding: "10px",
-          backgroundColor: "#f5f5f5",
-          borderRadius: "4px",
+          overflow: "hidden",
+          backgroundColor: "#fff",
         }}
       >
-        <button
-          onClick={() => addCellHandler("code")}
-          style={{
-            backgroundColor: "#4CAF50",
-            color: "white",
-            border: "none",
-            padding: "8px 16px",
-            borderRadius: "4px",
-            cursor: "pointer",
-          }}
-        >
-          + Add Code Cell
-        </button>
-
-        <button
-          onClick={() => addCellHandler("markdown")}
-          style={{
-            backgroundColor: "#9C27B0",
-            color: "white",
-            border: "none",
-            padding: "8px 16px",
-            borderRadius: "4px",
-            cursor: "pointer",
-          }}
-        >
-          + Add Markdown Cell
-        </button>
+        {cells.map((cell, index) => (
+          <div key={cell.id} style={{ position: "relative" }}>
+            {renderDropIndicator(index)}
+            <JupyterCell
+              key={cell.id}
+              index={index}
+              cell={cell}
+              kernelRef={kernelRef}
+              sessionRef={sessionRef}
+              cellStatus={cellStatus}
+              setCellStatus={setCellStatusHandler}
+              deleteCellHandler={deleteCellHandler}
+              moveCellUpHandler={moveCellUpHandler}
+              moveCellDownHandler={moveCellDownHandler}
+              insertCellHandler={insertCellHandler}
+              updateCellOutput={updateCellOutput}
+              totalCells={cells.length}
+              handleDragStart={handleDragStart}
+              handleDragOver={handleDragOver}
+              handleDragLeave={handleDragLeave}
+              handleDrop={handleDrop}
+              isDragging={draggedCellIndex === index}
+            />
+          </div>
+        ))}
+        {/* ตัวบ่งชี้สำหรับกรณีที่จะวางเป็นเซลล์สุดท้าย */}
+        {dropTargetIndex === cells.length - 1 &&
+          dropPosition === "after" &&
+          draggedCellIndex !== cells.length - 1 &&
+          /* เพิ่มเงื่อนไขเพื่อป้องกันการแสดงซ้ำซ้อน */
+          !cells.some((cell, idx) => renderDropIndicator(idx) !== null) && (
+            <div
+              style={{
+                height: "4px",
+                backgroundColor: "#2196F3",
+                marginTop: "-4px",
+              }}
+            />
+          )}
       </div>
     </div>
   );
