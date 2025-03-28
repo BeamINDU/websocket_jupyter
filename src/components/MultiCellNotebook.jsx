@@ -6,7 +6,61 @@ import {
   SessionManager,
   ServerConnection,
 } from "@jupyterlab/services";
+function ansiToHtml(text) {
+  if (typeof text !== "string") return text;
 
+  // เพิ่ม console.log เพื่อดูข้อความที่ได้รับ
+  console.log("ansiToHtml input:", text);
+
+  const converted = text
+    // สีข้อความ
+    .replace(/\u001b\[0;30m/g, '<span style="color: black">')
+    .replace(/\u001b\[0;31m/g, '<span style="color: red">')
+    .replace(/\u001b\[0;32m/g, '<span style="color: green">')
+    .replace(/\u001b\[0;33m/g, '<span style="color: yellow">')
+    .replace(/\u001b\[0;34m/g, '<span style="color: blue">')
+    .replace(/\u001b\[0;35m/g, '<span style="color: magenta">')
+    .replace(/\u001b\[0;36m/g, '<span style="color: cyan">')
+    .replace(/\u001b\[0;37m/g, '<span style="color: white">')
+
+    // สีข้อความแบบเข้ม (bright)
+    .replace(/\u001b\[1;30m/g, '<span style="color: black; font-weight: bold">')
+    .replace(/\u001b\[1;31m/g, '<span style="color: red; font-weight: bold">')
+    .replace(/\u001b\[1;32m/g, '<span style="color: green; font-weight: bold">')
+    .replace(
+      /\u001b\[1;33m/g,
+      '<span style="color: yellow; font-weight: bold">'
+    )
+    .replace(/\u001b\[1;34m/g, '<span style="color: blue; font-weight: bold">')
+    .replace(
+      /\u001b\[1;35m/g,
+      '<span style="color: magenta; font-weight: bold">'
+    )
+    .replace(/\u001b\[1;36m/g, '<span style="color: cyan; font-weight: bold">')
+    .replace(/\u001b\[1;37m/g, '<span style="color: white; font-weight: bold">')
+
+    // สีพื้นหลัง
+    .replace(/\u001b\[40m/g, '<span style="background-color: black">')
+    .replace(/\u001b\[41m/g, '<span style="background-color: red">')
+    .replace(/\u001b\[42m/g, '<span style="background-color: green">')
+    .replace(/\u001b\[43m/g, '<span style="background-color: yellow">')
+    .replace(/\u001b\[44m/g, '<span style="background-color: blue">')
+    .replace(/\u001b\[45m/g, '<span style="background-color: magenta">')
+    .replace(/\u001b\[46m/g, '<span style="background-color: cyan">')
+    .replace(/\u001b\[47m/g, '<span style="background-color: white">')
+
+    // รหัสปิด
+    .replace(/\u001b\[0m/g, "</span>")
+
+    // รหัสพิเศษสำหรับ cursor control (ใช้ในเทอร์มินัล)
+    .replace(/\u001b\[\d+m/g, "") // ลบรหัสที่ไม่รู้จักทั้งหมด
+    .replace(/\u001b\[\d+;\d+m/g, ""); // ลบรหัสรูปแบบ [number;number]m
+
+  // เพิ่ม console.log เพื่อดูข้อความที่แปลงแล้ว
+  console.log("ansiToHtml output:", converted);
+
+  return converted;
+}
 const JupyterCell = ({
   index,
   cell,
@@ -37,76 +91,6 @@ const JupyterCell = ({
       cursor: "move",
     },
   };
-  function ansiToHtml(text) {
-    if (typeof text !== "string") return text;
-
-    // เพิ่ม console.log เพื่อดูข้อความที่ได้รับ
-    console.log("ansiToHtml input:", text);
-
-    const converted = text
-      // สีข้อความ
-      .replace(/\u001b\[0;30m/g, '<span style="color: black">')
-      .replace(/\u001b\[0;31m/g, '<span style="color: red">')
-      .replace(/\u001b\[0;32m/g, '<span style="color: green">')
-      .replace(/\u001b\[0;33m/g, '<span style="color: yellow">')
-      .replace(/\u001b\[0;34m/g, '<span style="color: blue">')
-      .replace(/\u001b\[0;35m/g, '<span style="color: magenta">')
-      .replace(/\u001b\[0;36m/g, '<span style="color: cyan">')
-      .replace(/\u001b\[0;37m/g, '<span style="color: white">')
-
-      // สีข้อความแบบเข้ม (bright)
-      .replace(
-        /\u001b\[1;30m/g,
-        '<span style="color: black; font-weight: bold">'
-      )
-      .replace(/\u001b\[1;31m/g, '<span style="color: red; font-weight: bold">')
-      .replace(
-        /\u001b\[1;32m/g,
-        '<span style="color: green; font-weight: bold">'
-      )
-      .replace(
-        /\u001b\[1;33m/g,
-        '<span style="color: yellow; font-weight: bold">'
-      )
-      .replace(
-        /\u001b\[1;34m/g,
-        '<span style="color: blue; font-weight: bold">'
-      )
-      .replace(
-        /\u001b\[1;35m/g,
-        '<span style="color: magenta; font-weight: bold">'
-      )
-      .replace(
-        /\u001b\[1;36m/g,
-        '<span style="color: cyan; font-weight: bold">'
-      )
-      .replace(
-        /\u001b\[1;37m/g,
-        '<span style="color: white; font-weight: bold">'
-      )
-
-      // สีพื้นหลัง
-      .replace(/\u001b\[40m/g, '<span style="background-color: black">')
-      .replace(/\u001b\[41m/g, '<span style="background-color: red">')
-      .replace(/\u001b\[42m/g, '<span style="background-color: green">')
-      .replace(/\u001b\[43m/g, '<span style="background-color: yellow">')
-      .replace(/\u001b\[44m/g, '<span style="background-color: blue">')
-      .replace(/\u001b\[45m/g, '<span style="background-color: magenta">')
-      .replace(/\u001b\[46m/g, '<span style="background-color: cyan">')
-      .replace(/\u001b\[47m/g, '<span style="background-color: white">')
-
-      // รหัสปิด
-      .replace(/\u001b\[0m/g, "</span>")
-
-      // รหัสพิเศษสำหรับ cursor control (ใช้ในเทอร์มินัล)
-      .replace(/\u001b\[\d+m/g, "") // ลบรหัสที่ไม่รู้จักทั้งหมด
-      .replace(/\u001b\[\d+;\d+m/g, ""); // ลบรหัสรูปแบบ [number;number]m
-
-    // เพิ่ม console.log เพื่อดูข้อความที่แปลงแล้ว
-    console.log("ansiToHtml output:", converted);
-
-    return converted;
-  }
 
   // นอกจากนี้ ควรปรับส่วนตรวจจับ error ให้ครอบคลุมมากขึ้น
   const hasError = (output) => {
@@ -400,7 +384,7 @@ const JupyterCell = ({
             overflow: "hidden",
             resize: "none",
             fontFamily: "monospace",
-            padding: "8px",
+            padding: "10px",
             borderRadius: "4px",
             border: "1px solid #ddd",
             backgroundColor: cell.cell_type === "code" ? "#f8faff" : "#fff",
@@ -424,7 +408,6 @@ const JupyterCell = ({
             fontFamily: "monospace",
             whiteSpace: "pre-wrap",
             marginTop: "10px",
-            // แสดงผลเสมอ ไม่ว่าจะมี output หรือไม่
             display: "block",
           }}
           dangerouslySetInnerHTML={{
@@ -830,33 +813,15 @@ export default function MultiCellNotebook() {
                 updateCellOutput(cellIndex, output);
               }
             } else if (msgType === "error") {
-              hasErrorOccurred = true;
-
-              // สร้างข้อความ error แบบง่าย โดยไม่ใช้ ansiToHtml
-              const errorOutput = `<span style="color: red; font-weight: bold">${
-                msg.content.ename
-              }: ${
+              const errorText = `${msg.content.ename}: ${
                 msg.content.evalue
-              }</span>\n\n<pre style="color: red">${msg.content.traceback.join(
-                "\n"
-              )}</pre>`;
-
-              // อัปเดต output และสถานะ
-              output = errorOutput;
-              updateCellOutput(cellIndex, output);
-              setCellStatus((prev) => ({ ...prev, [cellIndex]: "Error" }));
-
-              // บันทึกข้อความ error
-              const errorMessage = `Execution stopped at cell ${
-                cellIndex + 1
-              } due to error: ${msg.content.ename}: ${msg.content.evalue}`;
+              }\n${msg.content.traceback.join("\n")}`;
+              output += ansiToHtml(errorText);
               console.log(
-                `[executeAllCells] Setting error message: ${errorMessage}`
+                `[executeAllCells] Cell ${cellIndex} updating error output`
               );
-              setError(errorMessage);
-
-              // หยุดการทำงาน
-              shouldCancelRef.current = true;
+              updateCellOutput(cellIndex, output);
+              hasErrorOccurred = true; // Mark that an error occurred
             }
           };
 
